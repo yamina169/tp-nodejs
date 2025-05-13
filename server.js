@@ -1,27 +1,59 @@
-const express = require('express');
-require('dotenv').config();
-const AuthRoutes = require('./routes/auth.routes');
-const mongoose = require('mongoose');
-//mongoose houa ODM (Object Data Modeling) pour MongoDB
+const express = require("express");
+const dotenv = require("dotenv");
+const path = require("path");
+const {
+  extractKeyphrases,
+  categorizeText,
+  highlightText,
+} = require("./keyphrases");
+
+dotenv.config();
+
 const app = express();
-const userRoutes = require('./routes/user.routes');
-
 app.use(express.json());
-app.use('/auth', AuthRoutes);
 
-app.use('/users', userRoutes);
+// Servir les fichiers statiques du répertoire public
+app.use(express.static(path.join(__dirname, "public")));
 
-mongoose.connect(process.env.MONGO_URI)
-    .then(() => {
-        console.log('Connected to MongoDB')
-    }).catch((err) => {
-        console.log('Failed to connect to MongoDB', err)
+// Gestion d’erreur pour les JSON invalides
+app.use((err, req, res, next) => {
+  if (err instanceof SyntaxError) {
+    return res.status(400).send({ error: "Invalid JSON format" });
+  }
+  next();
+});
+
+// Route pour extraire les phrases clés
+app.post("/extract-keyphrases", async (req, res) => {
+  const { text } = req.body;
+
+  if (!text) {
+    return res.status(400).send({ error: "Text is required" });
+  }
+
+  try {
+    // ✅ Passer le texte sous forme de tableau
+    const keyphrasesResponse = await extractKeyphrases([text]);
+
+    // ✅ Extraire les résultats du premier élément
+    const highlightedText = highlightText(text, keyphrasesResponse[0]);
+    const categories = categorizeText(keyphrasesResponse[0]);
+
+    res.json({
+      keyphrases: keyphrasesResponse[0],
+      highlightedText,
+      categories,
     });
+  } catch (error) {
+    console.error("Error extracting keyphrases:", error);
+    res
+      .status(500)
+      .send({ error: "An error occurred while extracting keyphrases" });
+  }
+});
 
-
-
-
-
-app.listen(process.env.PORT, () => {
-    console.log(`Server is running on port ${process.env.PORT}`);
+// Démarrer le serveur
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Server is running on http://localhost:${PORT}`);
 });
